@@ -158,7 +158,7 @@ export class CborReader {
     switch (header.getAdditionalInfo()) {
       case CborAdditionalInfo.Additional16BitData: {
         this.#ensureReadCapacity(3);
-        result = decodeHalf(remainingBytes.slice(1));
+        result = decodeHalf(remainingBytes.subarray(1, 3));
 
         this.#advanceBuffer(3);
         this.#advanceDataItemCounters();
@@ -167,7 +167,7 @@ export class CborReader {
       }
       case CborAdditionalInfo.Additional32BitData: {
         this.#ensureReadCapacity(5);
-        result = Buffer.from(remainingBytes).readFloatBE(1);
+        result = Buffer.from(remainingBytes.subarray(0, 5)).readFloatBE(1);
 
         this.#advanceBuffer(5);
         this.#advanceDataItemCounters();
@@ -176,7 +176,7 @@ export class CborReader {
       }
       case CborAdditionalInfo.Additional64BitData: {
         this.#ensureReadCapacity(9);
-        result = Buffer.from(remainingBytes).readDoubleBE(1);
+        result = Buffer.from(remainingBytes.subarray(0, 9)).readDoubleBE(1);
 
         this.#advanceBuffer(9);
         this.#advanceDataItemCounters();
@@ -625,12 +625,12 @@ export class CborReader {
   }
 
   /**
-   * Gets the remaining bytes in the buffer.
+   * Gets the remaining bytes in the buffer, as a view over the reader's data, without copying them.
    *
    * @returns An array with the remaining bytes in the buffer.
    */
   #getRemainingBytes(): Uint8Array {
-    return this.#data.slice(this.#offset);
+    return this.#data.subarray(this.#offset);
   }
 
   /** Advances the data item counters. */
@@ -875,27 +875,27 @@ export class CborReader {
     encodingLength: number;
   } {
     const data = this.#getRemainingBytes();
-    let concat = Buffer.from([]);
+    const chunks: Uint8Array[] = [];
     let encodingLength = 0;
 
     let i = 1; // skip the indefinite-length initial byte
 
-    let nextInitialByte = CborReader.#peekNextInitialByte(data.slice(i), type);
+    let nextInitialByte = CborReader.#peekNextInitialByte(data.subarray(i), type);
 
     while (nextInitialByte.getInitialByte() !== CborInitialByte.IndefiniteLengthBreakByte) {
-      const { length: chunkLength, bytesRead } = CborReader.#peekDefiniteLength(nextInitialByte, data.slice(i));
+      const { length: chunkLength, bytesRead } = CborReader.#peekDefiniteLength(nextInitialByte, data.subarray(i));
       const payloadSize = bytesRead + Number(chunkLength);
 
-      concat = Buffer.concat([concat, data.slice(i + (payloadSize - chunkLength), i + payloadSize)]);
+      chunks.push(data.subarray(i + (payloadSize - chunkLength), i + payloadSize));
 
       i += payloadSize;
 
-      nextInitialByte = CborReader.#peekNextInitialByte(data.slice(i), type);
+      nextInitialByte = CborReader.#peekNextInitialByte(data.subarray(i), type);
     }
 
     encodingLength = i + 1; // include the break byte
 
-    return { encodingLength, val: new Uint8Array(concat) };
+    return { encodingLength, val: new Uint8Array(Buffer.concat(chunks)) };
   }
 
   /**
@@ -931,7 +931,7 @@ export class CborReader {
       case CborAdditionalInfo.Additional16BitData: {
         CborReader.ensureReadCapacityInArray(data, 3);
 
-        const buffer = Buffer.from(data.slice(1));
+        const buffer = Buffer.from(data.subarray(1, 3));
         const val = buffer.readUInt16BE();
 
         return { bytesRead: 3, unsignedInt: BigInt(val) };
@@ -939,7 +939,7 @@ export class CborReader {
       case CborAdditionalInfo.Additional32BitData: {
         CborReader.ensureReadCapacityInArray(data, 5);
 
-        const buffer = Buffer.from(data.slice(1));
+        const buffer = Buffer.from(data.subarray(1, 5));
         const val = buffer.readUInt32BE();
 
         return { bytesRead: 5, unsignedInt: BigInt(val) };
@@ -947,7 +947,7 @@ export class CborReader {
       case CborAdditionalInfo.Additional64BitData: {
         CborReader.ensureReadCapacityInArray(data, 9);
 
-        const buffer = Buffer.from(data.slice(1, 9));
+        const buffer = Buffer.from(data.subarray(1, 9));
 
         let result = BigInt(0);
 

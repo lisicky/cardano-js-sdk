@@ -389,6 +389,50 @@ describe('CborReader', () => {
       );
       expect(reader.peekState()).toBe(CborReaderState.Finished);
     });
+
+    it('can read an indefinite size ByteString of many chunks followed by another value', async () => {
+      const chunks = 10_000;
+      const reader = new CborReader(HexBlob(`825f${'4101'.repeat(chunks)}ff1903e8`));
+
+      reader.readStartArray();
+      expect(reader.peekState()).toBe(CborReaderState.StartIndefiniteLengthByteString);
+      const array = reader.readByteString();
+      expect(array.length).toEqual(chunks);
+      expect(array.every((byte) => byte === 1)).toBe(true);
+      expect(reader.readInt()).toEqual(1000n);
+      reader.readEndArray();
+      expect(reader.peekState()).toBe(CborReaderState.Finished);
+    });
+  });
+
+  describe('Values after the start of the data', () => {
+    it('can read integers and floats of every width that do not start the data', async () => {
+      const reader = new CborReader(
+        HexBlob(
+          '88' +
+            '17' +
+            '1818' +
+            '1903e8' +
+            '1a000f4240' +
+            '1b0000000100000000' +
+            'f93e00' +
+            'fa47c35000' +
+            'fb3ff199999999999a'
+        )
+      );
+
+      reader.readStartArray();
+      expect(reader.readInt()).toEqual(23n);
+      expect(reader.readInt()).toEqual(24n);
+      expect(reader.readInt()).toEqual(1000n);
+      expect(reader.readInt()).toEqual(1_000_000n);
+      expect(reader.readInt()).toEqual(4_294_967_296n);
+      expect(reader.readDouble()).toEqual(1.5);
+      expect(reader.readDouble()).toEqual(100_000);
+      expect(reader.readDouble()).toEqual(1.1);
+      reader.readEndArray();
+      expect(reader.peekState()).toBe(CborReaderState.Finished);
+    });
   });
 
   describe('Integer', () => {
